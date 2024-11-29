@@ -1,0 +1,14 @@
+# PersistentVolume Definition
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: tmp-pv
+  namespace: argo
+spec:
+  storageClassName: ""
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /tmp/planetWatcher

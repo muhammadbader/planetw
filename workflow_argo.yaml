@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: dummy-wf
+  namespace: argo
+spec:
+  entrypoint: main
+  templates:
+    - name: main
+      script:
+        image: python:3.9
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Debugging the /scripts folder:"
+            ls -l /scripts
+            echo "Content of the Python script:"
+            cat /scripts/dummy.py
+            echo "TEST: Saving output to persistent volume:"
+            echo "Sample output file" > /data/output.txt
+            ls -l /data
+            mkdir /data/files
+            mkdir /data/sentinel_images
+            echo "runnig python"
+            pip install --no-cache-dir numpy pandas requests geopandas shapely
+            python /scripts/download.py
+        env:
+          - name: COPERNICUS_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: copernicus-secrets
+                key: COPERNICUS_TOKEN
+          - name: COPERNICUS_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: copernicus-secrets
+                key: COPERNICUS_SECRET
+        volumeMounts:
+          - name: scripts-volume
+            mountPath: /scripts
+          - name: data-volume
+            mountPath: /data
+  volumes:
+    - name: scripts-volume
+      configMap:
+        name: scripts
+    - name: data-volume
+      persistentVolumeClaim:
+        claimName: argo-pvc
+

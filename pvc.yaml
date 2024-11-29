@@ -1,0 +1,14 @@
+# PersistentVolumeClaim Definition
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: argo-pvc
+  namespace: argo
+spec:
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: tmp-pv

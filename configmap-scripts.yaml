@@ -1,0 +1,82 @@
+apiVersion: v1
+data:
+  download.py: "import os\nfrom datetime import date, timedelta\nimport requests\nimport
+    pandas as pd\nimport geopandas as gpd\nfrom shapely.geometry import shape\nimport
+    zipfile\nimport shutil\n\n# copernicus_user = os.getenv(\"copernicus_user\") #
+    copernicus User\n# copernicus_password = os.getenv(\"copernicus_password\") #
+    copernicus Password\ncopernicus_user = \"muhbader70@gmail.com\"\ncopernicus_password
+    = \"vye1uab.dcm*PNQ!zfv\"\n\n# WKT Representation of BBOX\nft = \"POLYGON ((-123.1454969332428
+    49.30196348364174, -123.1454969332428 49.21421911729337, -122.99313469145733 49.21421911729337,
+    -122.99313469145733 49.30196348364174, -123.1454969332428 49.30196348364174))\"\ndata_collection
+    = \"SENTINEL-2\" # Sentinel satellite\ncloudCover = 30\n\ntoday =  date.today()\ntoday_string
+    = today.strftime(\"%Y-%m-%d\")\nyesterday = today - timedelta(days=1000)\nyesterday_string
+    = yesterday.strftime(\"%Y-%m-%d\")\n\nos.mkdir(\"/data/files\")\nos.mkdir(\"/data/sentinel_images\")\n\ndef
+    get_keycloak(username: str, password: str) -> str:\n    data = {\n        \"client_id\":
+    \"cdse-public\",\n        \"username\": username,\n        \"password\": password,\n
+    \       \"grant_type\": \"password\",\n    }\n    try:\n        r = requests.post(\n
+    \           \"https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token\",\n
+    \           data=data,\n        )\n        r.raise_for_status()\n    except Exception
+    as e:\n        raise Exception(\n            f\"Keycloak token creation failed.
+    Reponse from the server was: {r.json()}\"\n        )\n    return r.json()[\"access_token\"]\n\nprint(f\"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name
+    eq '{data_collection}' and Attributes/OData.CSC.DoubleAttribute/any(att:att/Name
+    eq 'cloudCover' and att/OData.CSC.DoubleAttribute/Value lt {cloudCover:.2f}) and
+    OData.CSC.Intersects(area=geography'SRID=4326;{ft}') and ContentDate/Start gt
+    {yesterday_string}T00:00:00.000Z and ContentDate/Start lt {today_string}T00:00:00.000Z&$count=True&$top=5\")\n\njson_
+    = requests.get(\n    f\"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name
+    eq '{data_collection}' and Attributes/OData.CSC.DoubleAttribute/any(att:att/Name
+    eq 'cloudCover' and att/OData.CSC.DoubleAttribute/Value lt {cloudCover:.2f}) and
+    OData.CSC.Intersects(area=geography'SRID=4326;{ft}') and ContentDate/Start gt
+    {yesterday_string}T00:00:00.000Z and ContentDate/Start lt {today_string}T00:00:00.000Z&$count=True&$top=5\"\n).json()\n\n\np
+    = pd.DataFrame.from_dict(json_[\"value\"]) # Fetch available dataset\nif p.shape[0]
+    > 0 :\n    p[\"geometry\"] = p[\"GeoFootprint\"].apply(shape)\n    productDF =
+    gpd.GeoDataFrame(p).set_geometry(\"geometry\") # Convert PD to GPD\n    productDF
+    = productDF[~productDF[\"Name\"].str.contains(\"L1C\")] # Remove L1C dataset\n
+    \   print(f\" Total L2A tiles found {len(productDF)}\")\n\n    productDF[\"identifier\"]
+    = productDF[\"Name\"].str.split(\".\").str[0]\n    allfeat = len(productDF) \n\n
+    \   if allfeat == 0:\n        print(f\"No tiles found for {today} : {yesterday}\")\n
+    \   else:\n        ## download all tiles from server\n        for index,feat in
+    enumerate(productDF.iterfeatures()):\n            try:\n                session
+    = requests.Session()\n                keycloak_token = get_keycloak(copernicus_user,copernicus_password)\n
+    \               session.headers.update({\"Authorization\": f\"Bearer {keycloak_token}\"})\n
+    \               url = f\"https://catalogue.dataspace.copernicus.eu/odata/v1/Products({feat['properties']['Id']})/$value\"\n
+    \               response = session.get(url, allow_redirects=False)\n                while
+    response.status_code in (301, 302, 303, 307):\n                    url = response.headers[\"Location\"]\n
+    \                   response = session.get(url, allow_redirects=False)\n                print(\"id:
+    \" + feat[\"properties\"][\"Id\"])\n\n                file = session.get(url,
+    verify=False, allow_redirects=True, stream=True)\n                with open(\n
+    \                   f\"/data/files/{feat['properties']['identifier']}.zip\", #location
+    to save zip from copernicus \n                    \"wb\",\n                ) as
+    p:\n                    print(feat[\"properties\"][\"Name\"])\n                    p.write(file.content)\n
+    \           except:\n                print(\"problem with server\")\nelse :\n
+    \   print('no data found')\n\n\n# Extracting zip files\n\nfor zip_file in os.listdir(\"/data/files\"):\n
+    \   if zip_file.endswith(\".zip\"):\n        file_name_raw = zip_file.split(\".\")[0]\n
+    \       with zipfile.ZipFile(os.path.join(\"/data/files\", zip_file), 'r') as
+    zip_ref:\n            \n            # print(zip_ref.namelist())\n            file_name
+    = f\"{file_name_raw}.SAFE/{file_name_raw}-ql.jpg\"\n            if file_name in
+    zip_ref.namelist():\n                print(\"found\")\n                zip_ref.extract(file_name,f\"/data/sentinel_images\",None)\n
+    \               shutil.move(f\"/data/sentinel_images/{file_name}\", \"/data/sentinel_images\")\n
+    \               os.rmdir(f\"/data/sentinel_images/{file_name_raw}.SAFE\")\n\n\nimport
+    time\nos.mkdir(\"/data/waiting\")\nc = 0\nwhile True:\n    time.sleep(15)\n    os.system(f\"echo
+    {c} >  /data/waiting/{c}.txt\")\n"
+  dummy.py: |
+    import os
+
+    print("Hello Mubu!")
+    COPERNICUS_TOKEN = os.getenv("COPERNICUS_TOKEN")
+    COPERNICUS_SECRET = os.getenv("COPERNICUS_SECRET")
+    print(COPERNICUS_TOKEN)
+    print(COPERNICUS_SECRET)
+
+
+    import time
+    i = 0
+    while True:
+        time.sleep(10)
+        with open(f"/data/{i}.txt", "w+") as f:
+            f.write(f"this is file {i}")
+        i+=1
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: scripts
+  namespace: argo
